@@ -1,0 +1,6 @@
+@CacheApiDemo_HostAddress = http://localhost:5172
+
+GET {{CacheApiDemo_HostAddress}}/Employee/
+Accept: application/json
+
+###
