@@ -12,6 +12,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddMemoryCache(); // Register in-memory cache
 builder.Services.AddScoped<ICacheService, CacheService>();
 builder.Services.AddSingleton<CacheBackgroundService>();
+builder.Services.AddHostedService<CacheBackgroundService>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

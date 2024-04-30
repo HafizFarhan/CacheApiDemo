@@ -24,8 +24,14 @@ namespace CacheApiDemo.Services
                     cacheService.ClearCache();
                     cacheService.LoadInitialCache();
                 }
+                // Get the current time
+                var currentTime = DateTime.Now;
 
-                await Task.Delay(TimeSpan.FromHours(24), stoppingToken);
+                // Calculate the time until the next 8 AM
+                var nextExecutionTime = currentTime.Date.AddDays(1).AddHours(8);
+
+                // Delay the task until the next 8 AM
+                await Task.Delay(nextExecutionTime - currentTime, stoppingToken);
             }
         }
     }

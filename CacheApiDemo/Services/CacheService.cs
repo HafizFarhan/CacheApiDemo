@@ -61,8 +61,6 @@ namespace CacheApiDemo.Services
 
         public void LoadInitialCache()
         {
-           
-         
             AddOrUpdateCache("123", "001", "color", "blue");
             AddOrUpdateCache("123", "002", "size", "medium");
         }
