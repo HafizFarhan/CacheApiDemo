@@ -21,7 +21,7 @@ namespace CacheApiDemo.Controllers
         public IActionResult GetAttributeValue(string accountCode, string subAccountCode, string attributeCode)
         {
             _cacheService.TryGetFromCache(accountCode, subAccountCode, attributeCode, out var attributeValue);
-            if (attributeValue!=null)
+            if (attributeValue != null)
             {
                 return Ok(attributeValue);
             }
@@ -35,7 +35,10 @@ namespace CacheApiDemo.Controllers
         [HttpPost("AddOrUpdateCache")]
         public IActionResult AddOrUpdateCache([FromBody] CacheEntryModel model)
         {
+
             _cacheService.AddOrUpdateCache(model.AccountCode, model.SubAccountCode, model.AttributeCode, model.AttributeValue);
+
+
             return Ok();
         }
         [HttpPost("LoadInitialCache")]
@@ -46,4 +49,3 @@ namespace CacheApiDemo.Controllers
         }
     }
 }
-
