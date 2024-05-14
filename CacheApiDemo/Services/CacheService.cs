@@ -13,11 +13,13 @@ using System.Threading.Tasks;
 using static System.Net.WebRequestMethods;
 using CacheApiDemo.Models;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 namespace CacheApiDemo.Services
 {
     public class CacheService : ICacheService
     {
         private readonly IMemoryCache _memoryCache;
+
         private CancellationTokenSource _resetCacheToken = new CancellationTokenSource();
         private readonly AwsConfiguration _awsConfig;
         private readonly IAmazonSimpleNotificationService _snsClient;
@@ -42,8 +44,14 @@ namespace CacheApiDemo.Services
 
             try
             {
+                Console.WriteLine();
+                Console.WriteLine();
+                Console.WriteLine("Publisher Event Start");
+                Console.WriteLine();
                 var response = _snsClient.PublishAsync(request).Result;
+                Console.WriteLine();
                 Console.WriteLine($"Message published to SNS topic. MessageId: {response.MessageId}");
+                Console.WriteLine();
             }
             catch (Exception ex)
             {
@@ -52,6 +60,10 @@ namespace CacheApiDemo.Services
         }
         public async Task SubscribeToSnsTopicAsync()
         {
+
+            Console.WriteLine();
+            Console.WriteLine();
+
             if (_awsConfig == null || _awsConfig.SnsTopicArn == null)
             {
                 Console.WriteLine("AWS configuration is not properly loaded.");
@@ -67,15 +79,21 @@ namespace CacheApiDemo.Services
             try
             {
                 var response = await _snsClient.SubscribeAsync(request);
+                Console.WriteLine("Subscribing...................");
+                Console.WriteLine();
+                Console.WriteLine();
                 Console.WriteLine("Subscribed to SNS topic successfully.");
             }
             catch (Exception ex)
             {
                 Console.WriteLine("Failed to subscribe to SNS topic. Error: " + ex.Message);
             }
+
         }
         public async Task PollSqsQueueAsync()
         {
+
+
             var request = new ReceiveMessageRequest
             {
 
@@ -90,7 +108,36 @@ namespace CacheApiDemo.Services
 
                 foreach (var message in response.Messages)
                 {
+
+                    Console.WriteLine();
+                    Console.WriteLine("Receiving Message...........");
+                    Console.WriteLine();
                     Console.WriteLine("Received message: " + message.Body);
+                    Console.WriteLine();
+                    try
+                    {
+                        var messageObject = JsonConvert.DeserializeObject<JObject>(message.Body);
+                        var messageBody = messageObject["Message"].ToString();
+                        var cacheEntry = JsonConvert.DeserializeObject<CacheEntryModel>(messageBody);
+                        if (cacheEntry != null)
+                        {
+                            Console.WriteLine();
+                            Console.WriteLine("Deserialized message successfully");
+                            Console.WriteLine();
+
+                            // Update the cache based on the received message
+                            AddOrUpdateCache(cacheEntry.AccountCode, cacheEntry.SubAccountCode, cacheEntry.AttributeCode, cacheEntry.AttributeValue);
+
+                        }
+                        else
+                        {
+                            Console.WriteLine("Failed to deserialize message.");
+                        }
+                    }
+                    catch (JsonException je)
+                    {
+                        Console.WriteLine("Error deserializing message: " + je.Message);
+                    }
                     // Delete the message from the queue
                     var deleteRequest = new DeleteMessageRequest
                     {
@@ -106,21 +153,64 @@ namespace CacheApiDemo.Services
         //it generates a cache key based on the key components, sets cache entry options(e.g., expiration time), and adds or updates the cache entry.
         public void AddOrUpdateCache(string accountCode, string subAccountCode, string attributeCode, string attributeValue)
         {
+            Console.WriteLine();
+            try
+            {
+                if (string.IsNullOrEmpty(accountCode) || string.IsNullOrEmpty(subAccountCode) || string.IsNullOrEmpty(attributeCode) || string.IsNullOrEmpty(attributeValue))
+                {
+                    Console.WriteLine("Invalid input parameters.");
+                    return;
+                }
+                // Generate a unique cache key based on the provided key components.
+                var cacheKey = GetCacheKey(accountCode, subAccountCode, attributeCode);
 
-            // Generate a unique cache key based on the provided key components.
-            var cacheKey = GetCacheKey(accountCode, subAccountCode, attributeCode);
+                if (string.IsNullOrEmpty(cacheKey))
+                {
+                    Console.WriteLine("Failed to generate cache key.");
+                    return;
+                }
+                Console.WriteLine("Curent values of Cache are");
+                Console.WriteLine();
 
-            // Set cache entry options (e.g., expiration time).
-            var cacheEntryOptions = new MemoryCacheEntryOptions
-           ()
-                //           AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30)*/ // Set your desired expiration time
+                if (_memoryCache.TryGetValue(cacheKey, out string existingValue))
+                {
+                    Console.WriteLine();
 
-                .SetPriority(CacheItemPriority.High)
-                .SetSlidingExpiration(TimeSpan.FromMinutes(30))
-                .AddExpirationToken(new CancellationChangeToken(_resetCacheToken.Token));
+                    Console.WriteLine($"Existing cache value for key {cacheKey}: {existingValue}");
+                    Console.WriteLine();
+                }
+                else
+                {
+                    Console.WriteLine($"Cache key {cacheKey} not found. Adding new cache entry.");
+                }
 
-            _memoryCache.Set(cacheKey, attributeValue, cacheEntryOptions);
+                Console.WriteLine();
 
+                Console.WriteLine("Updating cache............");
+                Console.WriteLine();
+
+                // Set cache entry options (e.g., expiration time).
+                var cacheEntryOptions = new MemoryCacheEntryOptions
+               ()
+                    //           AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30)*/ // Set your desired expiration time
+
+                    .SetPriority(CacheItemPriority.High)
+                    .SetSlidingExpiration(TimeSpan.FromMinutes(30))
+                    .AddExpirationToken(new CancellationChangeToken(_resetCacheToken.Token));
+
+                _memoryCache.Set(cacheKey, attributeValue, cacheEntryOptions);
+                Console.WriteLine();
+                Console.WriteLine("Cache updated successfully.");
+                Console.WriteLine();
+                Console.WriteLine();
+                Console.WriteLine("Cache After Update is ");
+                Console.WriteLine();
+                Console.WriteLine($"Cache updated successfully for key {cacheKey}. New value is : {attributeValue}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in AddOrUpdateCache: {ex.Message}");
+            }
 
 
 
@@ -134,7 +224,7 @@ namespace CacheApiDemo.Services
 
 
         // Create a unique cache key by concatenating the key components.
-        private string GetCacheKey(string accountCode, string subAccountCode, string attributeCode)
+        public string GetCacheKey(string accountCode, string subAccountCode, string attributeCode)
         {
             return $"{accountCode}_{subAccountCode}_{attributeCode}";
         }
@@ -146,7 +236,6 @@ namespace CacheApiDemo.Services
                 _resetCacheToken.Dispose();
                 _resetCacheToken = new CancellationTokenSource();
             }
-
 
         }
 
@@ -160,14 +249,14 @@ namespace CacheApiDemo.Services
                 AccountCode = "123",
                 SubAccountCode = "001",
                 AttributeCode = "color",
-                AttributeValue = "blue"
+                AttributeValue = "red"
             };
             var cacheEntryJson = JsonConvert.SerializeObject(cacheEntry);
 
             await PublishMessageToSnsTopic(cacheEntryJson);
             PollSqsQueueAsync();
 
-            AddOrUpdateCache(cacheEntry.AccountCode, cacheEntry.SubAccountCode, cacheEntry.AttributeCode, cacheEntry.AttributeValue);
+            //AddOrUpdateCache(cacheEntry.AccountCode, cacheEntry.SubAccountCode, cacheEntry.AttributeCode, cacheEntry.AttributeValue);
             //AddOrUpdateCache("123", "002", "size", "medium");
         }
 
