@@ -8,12 +8,10 @@ namespace CacheApiDemo.Services
     public class CacheBackgroundService : BackgroundService
     {
         private readonly IServiceProvider _serviceProvider;
-
         public CacheBackgroundService(IServiceProvider serviceProvider)
         {
             _serviceProvider = serviceProvider;
         }
-
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)
@@ -22,7 +20,7 @@ namespace CacheApiDemo.Services
                 {
                     var cacheService = scope.ServiceProvider.GetRequiredService<ICacheService>();
                     cacheService.ClearCache();
-                    cacheService.LoadInitialCache();
+                    await cacheService.LoadInitialCache();
                 }
                 // Get the current time
                 var currentTime = DateTime.Now;

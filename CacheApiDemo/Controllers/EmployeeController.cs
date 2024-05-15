@@ -9,9 +9,7 @@ namespace CacheApiDemo.Controllers
     [ApiController]
     public class EmployeeController : ControllerBase
     {
-
         private readonly ICacheService _cacheService;
-
         public EmployeeController(ICacheService cacheService)
         {
             _cacheService = cacheService;
@@ -35,10 +33,7 @@ namespace CacheApiDemo.Controllers
         [HttpPost("AddOrUpdateCache")]
         public IActionResult AddOrUpdateCache([FromBody] CacheEntryModel model)
         {
-
             _cacheService.AddOrUpdateCache(model.AccountCode, model.SubAccountCode, model.AttributeCode, model.AttributeValue);
-
-
             return Ok();
         }
         [HttpPost("LoadInitialCache")]
