@@ -25,12 +25,14 @@ namespace CacheApiDemo.Services
         private readonly IAmazonSimpleNotificationService _snsClient;
         private readonly IAmazonSQS _sqsClient;
         //string queueUrl = "https://sqs.eu-north-1.amazonaws.com/103353526655/Update";
+        private readonly HashSet<string> _cacheKeys;
         public CacheService(IMemoryCache memoryCache, IOptions<AwsConfiguration> awsConfig, IAmazonSimpleNotificationService snsClient, IAmazonSQS sqsClient)
         {
             _memoryCache = memoryCache;
             _awsConfig = awsConfig.Value;
             _snsClient = snsClient;
             _sqsClient = sqsClient;
+            _cacheKeys = new HashSet<string>();
 
         }
         public async Task PublishMessageToSnsTopic(string message)
@@ -44,14 +46,9 @@ namespace CacheApiDemo.Services
 
             try
             {
-                Console.WriteLine();
-                Console.WriteLine();
                 Console.WriteLine("Publisher Event Start");
-                Console.WriteLine();
                 var response = _snsClient.PublishAsync(request).Result;
-                Console.WriteLine();
                 Console.WriteLine($"Message published to SNS topic. MessageId: {response.MessageId}");
-                Console.WriteLine();
             }
             catch (Exception ex)
             {
@@ -78,11 +75,9 @@ namespace CacheApiDemo.Services
 
             try
             {
+                Console.WriteLine("Subscribing to SNS topic");
                 var response = await _snsClient.SubscribeAsync(request);
-                Console.WriteLine("Subscribing...................");
-                Console.WriteLine();
-                Console.WriteLine();
-                Console.WriteLine("Subscribed to SNS topic successfully.");
+                Console.WriteLine("Subscribed to SNS Response : "+response);
             }
             catch (Exception ex)
             {
@@ -92,11 +87,8 @@ namespace CacheApiDemo.Services
         }
         public async Task PollSqsQueueAsync()
         {
-
-
             var request = new ReceiveMessageRequest
             {
-
                 QueueUrl = _awsConfig.QueueUrl,
                 MaxNumberOfMessages = 10, // adjust as needed
                 WaitTimeSeconds = 20 // enable long polling
@@ -108,12 +100,7 @@ namespace CacheApiDemo.Services
 
                 foreach (var message in response.Messages)
                 {
-
-                    Console.WriteLine();
-                    Console.WriteLine("Receiving Message...........");
-                    Console.WriteLine();
-                    Console.WriteLine("Received message: " + message.Body);
-                    Console.WriteLine();
+                    Console.WriteLine("Message receviced: " + message.Body);
                     try
                     {
                         var messageObject = JsonConvert.DeserializeObject<JObject>(message.Body);
@@ -121,13 +108,8 @@ namespace CacheApiDemo.Services
                         var cacheEntry = JsonConvert.DeserializeObject<CacheEntryModel>(messageBody);
                         if (cacheEntry != null)
                         {
-                            Console.WriteLine();
-                            Console.WriteLine("Deserialized message successfully");
-                            Console.WriteLine();
-
                             // Update the cache based on the received message
                             AddOrUpdateCache(cacheEntry.AccountCode, cacheEntry.SubAccountCode, cacheEntry.AttributeCode, cacheEntry.AttributeValue);
-
                         }
                         else
                         {
@@ -148,12 +130,25 @@ namespace CacheApiDemo.Services
                 }
             }
         }
+        public Dictionary<string, object> GetAllCachedEntries()
+        {
+            var cachedEntries = new Dictionary<string, object>();
 
+            foreach (var cacheKey in _cacheKeys)
+            {
+                if (_memoryCache.TryGetValue(cacheKey, out object value))
+                {
+                    cachedEntries.Add(cacheKey, value);
+
+                }
+            }
+
+            return cachedEntries;
+        }
 
         //it generates a cache key based on the key components, sets cache entry options(e.g., expiration time), and adds or updates the cache entry.
         public void AddOrUpdateCache(string accountCode, string subAccountCode, string attributeCode, string attributeValue)
         {
-            Console.WriteLine();
             try
             {
                 if (string.IsNullOrEmpty(accountCode) || string.IsNullOrEmpty(subAccountCode) || string.IsNullOrEmpty(attributeCode) || string.IsNullOrEmpty(attributeValue))
@@ -161,59 +156,35 @@ namespace CacheApiDemo.Services
                     Console.WriteLine("Invalid input parameters.");
                     return;
                 }
-                // Generate a unique cache key based on the provided key components.
-                var cacheKey = GetCacheKey(accountCode, subAccountCode, attributeCode);
 
+                var cacheKey = GetCacheKey(accountCode, subAccountCode, attributeCode);
+                _cacheKeys.Add(cacheKey);
                 if (string.IsNullOrEmpty(cacheKey))
                 {
                     Console.WriteLine("Failed to generate cache key.");
                     return;
                 }
-                Console.WriteLine("Curent values of Cache are");
-                Console.WriteLine();
 
-                if (_memoryCache.TryGetValue(cacheKey, out string existingValue))
-                {
-                    Console.WriteLine();
-
-                    Console.WriteLine($"Existing cache value for key {cacheKey}: {existingValue}");
-                    Console.WriteLine();
-                }
-                else
-                {
-                    Console.WriteLine($"Cache key {cacheKey} not found. Adding new cache entry.");
-                }
-
-                Console.WriteLine();
-
-                Console.WriteLine("Updating cache............");
-                Console.WriteLine();
+                // Log cache before update
+                Console.WriteLine("Cache Before Update:");
+                LogAllCachedEntries();
 
                 // Set cache entry options (e.g., expiration time).
-                var cacheEntryOptions = new MemoryCacheEntryOptions
-               ()
-                    //           AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30)*/ // Set your desired expiration time
-
+                var cacheEntryOptions = new MemoryCacheEntryOptions()
                     .SetPriority(CacheItemPriority.High)
                     .SetSlidingExpiration(TimeSpan.FromMinutes(30))
                     .AddExpirationToken(new CancellationChangeToken(_resetCacheToken.Token));
 
                 _memoryCache.Set(cacheKey, attributeValue, cacheEntryOptions);
-                Console.WriteLine();
-                Console.WriteLine("Cache updated successfully.");
-                Console.WriteLine();
-                Console.WriteLine();
-                Console.WriteLine("Cache After Update is ");
-                Console.WriteLine();
-                Console.WriteLine($"Cache updated successfully for key {cacheKey}. New value is : {attributeValue}");
+
+                // Log cache after update
+                Console.WriteLine("Cache After Update:");
+                LogAllCachedEntries();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error in AddOrUpdateCache: {ex.Message}");
             }
-
-
-
         }
         //Attempts to retrieve a value from the cache using the specified key components.
         public bool TryGetFromCache(string accountCode, string subAccountCode, string attributeCode, out string attributeValue)
@@ -221,7 +192,14 @@ namespace CacheApiDemo.Services
             var cacheKey = GetCacheKey(accountCode, subAccountCode, attributeCode);
             return _memoryCache.TryGetValue(cacheKey, out attributeValue);
         }
-
+        private void LogAllCachedEntries()
+        {
+            var cachedEntries = GetAllCachedEntries();
+            foreach (var entry in cachedEntries)
+            {
+                Console.WriteLine($"Key: {entry.Key}, Value: {entry.Value}");
+            }
+        }
 
         // Create a unique cache key by concatenating the key components.
         public string GetCacheKey(string accountCode, string subAccountCode, string attributeCode)
